@@ -16,7 +16,6 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 //  这分配的page是从哪里来的？disk ? dram ? 我的程序不是本身就运行在dram?
 
-
 struct run {
   struct run *next;
 };
@@ -26,10 +25,6 @@ struct {
   struct run *freelist;
 } kmem[NCPU];
 
-// struct {
-//   struct spinlock lock;
-//   struct run *freelist;
-// } kmem;
 
 char *kmem_lock_name[NCPU] = {
   "kmem_0",
@@ -63,7 +58,6 @@ void showPhysicalPage()
 void
 kinit()
 {
-  // initlock(&kmem.lock,"kmem");
   for(int i=0;i<NCPU;++i)
   {
     initlock(&kmem[i].lock, kmem_lock_name[i]);
@@ -72,10 +66,11 @@ kinit()
 }
 
 void
-freerange(void *pa_start, void *pa_end)     //  这应当都是虚拟地址吧。。等做完这个lock实验再研究
+freerange(void *pa_start, void *pa_end)     // kernel使用的虚拟地址 直接映射到物理地址
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
+  printf("p kenrel dram base virtual address = %p\n",p);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
 }
@@ -240,119 +235,3 @@ kalloc(void)
 
 
 
-
-// Physical memory allocator, for user processes,
-// kernel stacks, page-table pages,
-// and pipe buffers. Allocates whole 4096-byte pages.
-
-// #include "types.h"
-// #include "param.h"
-// #include "memlayout.h"
-// #include "spinlock.h"
-// #include "riscv.h"
-// #include "defs.h"
-
-// void freerange(void *pa_start, void *pa_end);
-
-// extern char end[]; // first address after kernel.
-//                    // defined by kernel.ld.
-
-// struct run {
-//   struct run *next;
-// };
-
-// struct {
-//   struct spinlock lock;
-//   struct run *freelist;
-// } kmem[NCPU];
-
-//   // kmem开头的锁的名字的数组
-//   char kmemname[NCPU][16];
-
-// void
-// kinit()
-// {
-//   // 初始化每一个cpu的kmem lock
-//   for(int i=0; i<NCPU; i++){
-//     snprintf(kmemname[i], sizeof(kmemname[i]), "kmem_cpu%d", i);
-//     initlock(&kmem[i].lock, kmemname[i]);
-//   }
-//   freerange(end, (void*)PHYSTOP);
-// }
-
-// void
-// freerange(void *pa_start, void *pa_end)
-// {
-//   char *p;
-//   p = (char*)PGROUNDUP((uint64)pa_start);
-//   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
-//     kfree(p);
-// }
-
-// // Free the page of physical memory pointed at by v,
-// // which normally should have been returned by a
-// // call to kalloc().  (The exception is when
-// // initializing the allocator; see kinit above.)
-// void
-// kfree(void *pa)
-// {
-//   struct run *r;
-
-//   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
-//     panic("kfree");
-
-//   // Fill with junk to catch dangling refs.
-//   memset(pa, 1, PGSIZE);
-
-//   r = (struct run*)pa;
-
-//   // 关中断 也不允许定时器中断 只有一个cpu在kfree
-//   push_off();
-//   int cpu = cpuid(); // 获取当前运行kfree的cpu
-//   // 开中断
-//   pop_off();
-
-//   acquire(&kmem[cpu].lock);
-//   r->next = kmem[cpu].freelist;
-//   kmem[cpu].freelist = r;
-//   release(&kmem[cpu].lock);
-// }
-
-// // Allocate one 4096-byte page of physical memory.
-// // Returns a pointer that the kernel can use.
-// // Returns 0 if the memory cannot be allocated.
-// void *
-// kalloc(void)
-// {
-//   struct run *r;
-
-//   push_off();
-//   int cpu = cpuid();
-//   pop_off();
-
-//   // 先找自己的链表
-//   acquire(&kmem[cpu].lock);
-//   r = kmem[cpu].freelist;
-//   if(r)
-//     kmem[cpu].freelist = r->next;
-//   else{
-//   // 自己没有，找别人的，偷一页
-//     for(int i=0; i<NCPU && !r; i++){
-//       if(i==cpu) continue;
-//       else{
-//         acquire(&kmem[i].lock);
-//         r = kmem[i].freelist;
-//         if(r)
-//           kmem[i].freelist = r->next;
-//         release(&kmem[i].lock);
-//       }
-//     }
-//   }
-//   release(&kmem[cpu].lock);
-
-
-//   if(r)
-//     memset((char*)r, 5, PGSIZE); // fill with junk
-//   return (void*)r;
-
-// }
