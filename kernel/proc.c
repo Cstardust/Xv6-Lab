@@ -106,11 +106,15 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
     return 0;
+  }
+
+  if((p->back_trapframe = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+	  return 0;
   }
 
   // An empty user page table.
@@ -120,6 +124,11 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  p->alarm_handler = 0;
+  p->ticks_interval = 0;
+  p->ticks_passed = 0;
+  p->is_in_cb = 0;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -139,6 +148,15 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  p->alarm_handler = 0;
+  p->ticks_interval = 0;
+  p->ticks_passed = 0;
+  if(p->back_trapframe)
+    kfree((void*)p->back_trapframe);
+  p->back_trapframe = 0;
+  p->is_in_cb = 0;
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -517,9 +535,19 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
+  //  切换成scheduler ？
   swtch(&p->context, &mycpu()->context);
+  //  结束scheduler ?? scheduler也不会返回。。这是干啥呢。。
   mycpu()->intena = intena;
 }
+
+// static void assert(int flag,char * msg)
+// {
+//   if(!flag)
+//   {
+//     panic(msg);
+//   }
+// }
 
 // Give up the CPU for one scheduling round.
 void
@@ -527,10 +555,52 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  
   p->state = RUNNABLE;
+  
+  if(p->ticks_interval!=0 && p->alarm_handler!=0)
+  {
+    ++p->ticks_passed;
+    if(p->ticks_passed >= p->ticks_interval && p->is_in_cb!=1)
+    {
+      //  备份trapframe
+      *(p->back_trapframe) = *(p->trapframe);
+      //  handler使用当前trapframe
+      p->trapframe->epc = (uint64) p->alarm_handler;
+      p->ticks_passed %= p->ticks_interval;
+      p->is_in_cb = 1;
+      // p->ticks_interval = 0;              //  当前已经在alarm_handler了，就取消对alarm计数
+    }
+  }
   sched();
+  
   release(&p->lock);
 }
+// if(p->ticks_interval!=0 && p->alarm_handler!=0)
+// {
+//   ++p->ticks_passed;
+//   if(p->ticks_passed >= p->ticks_interval)
+//   {
+//     //  替换trapframe
+//     p->back_trapframe = p->trapframe;
+//     p->trapframe = kalloc();
+//     assert(p->trapframe!=0,"kalloc trapframe");
+//     *(p->trapframe) = *(p->back_trapframe);
+//     p->trapframe->epc = (uint64) p->alarm_handler;
+//     //  不止这些 handler还需要用到user process其他的上下文 因此直接赋值吧还是。
+//     // p->trapframe->kernel_trap = p->back_trapframe->kernel_trap;
+//     // p->trapframe->kernel_sp = p->back_trapframe->kernel_sp;
+//     // p->trapframe->epc = (uint64) p->alarm_handler;    //  pc流跳转到目标的handler
+//     // p->trapframe->kernel_hartid = p->back_trapframe->kernel_hartid;
+//     p->ticks_passed %= p->ticks_interval;
+//     //  wrong
+//     // p->alarm_handler();
+//     // p->trapframe->epc += 4;   //  alarm_handler结束后要return到的地址 应当是个ecall之后的ret
+//     // return ;
+//   }
+// }
+
+
 
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.

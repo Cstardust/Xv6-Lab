@@ -41,7 +41,7 @@ usertrap(void)
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
-  // send interrupts and exceptions to kerneltrap(),
+  // send interrupts and exceptions to (),
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 

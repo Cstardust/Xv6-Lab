@@ -59,6 +59,21 @@ printptr(uint64 x)
     consputc(digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
+
+
+void backtrace()
+{
+  //  framepointer
+  uint64 fp = r_fp();
+  //  cur_fp 当前遍历到的栈帧地址
+  for(uint64 cur_fp = fp;cur_fp >= PGROUNDDOWN(fp) ; )
+  {
+    uint64 func = *((uint64*)(cur_fp - 8)); //  调用本级函数的 上一级函数的调用本层函数的 代码地址
+    printf("%p\n",func);
+    cur_fp = *((uint64*)(cur_fp-16));       //  fp - 16 
+  }
+}
+
 // Print to the console. only understands %d, %x, %p, %s.
 void
 printf(char *fmt, ...)
@@ -122,6 +137,9 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+
+  backtrace();  //  打印func调用堆栈
+
   for(;;)
     ;
 }

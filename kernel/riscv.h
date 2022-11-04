@@ -1,3 +1,14 @@
+//  The GCC compiler stores the frame pointer of the currently executing function in the register s0
+//  s0 : 当前栈帧的栈底指针 也即fp
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  //  将s0 reg的值 移动到 x中
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
+
 // which hart (core) is this?
 static inline uint64
 r_mhartid()
@@ -323,7 +334,9 @@ sfence_vma()
 #define PGSIZE 4096 // bytes per page
 #define PGSHIFT 12  // bits of offset within a page
 
+//  向上取为PGSIZE4096的倍数
 #define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
+//  向下取为PGSIZE4096的倍数
 #define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
 
 #define PTE_V (1L << 0) // valid
