@@ -99,3 +99,30 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//  开启时钟
+uint64 sys_sigalarm(void)
+{
+  struct proc* p =myproc();
+  if(argint(0,&p->ticks_interval) < 0)
+    return -1;
+  if(argaddr(1,(uint64*)&p->alarm_handler) < 0)  
+    return -1;
+  p->ticks_passed = 0;
+
+  // printf("start sys_sigalarm!\n");
+  return 0;
+}
+
+uint64 sys_sigreturn(void)
+{
+  // printf("sys_sigreturn!\n");
+  struct proc* p = myproc();
+  *(p->trapframe) = *(p->back_trapframe);
+  p->is_in_cb = 0;
+  // kfree(p->trapframe);              //  释放alarm handler所用的trapframe
+  // p->trapframe = p->back_trapframe; //  重新获取user process正常的pc流的上下文
+  // p->trapframe->epc += 4;
+  // p->back_trapframe = 0;
+  return 0;
+}

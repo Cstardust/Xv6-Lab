@@ -149,11 +149,12 @@ freeproc(struct proc *p)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
 
+  if(p->back_trapframe)
+    kfree((void*)p->back_trapframe);
+
   p->alarm_handler = 0;
   p->ticks_interval = 0;
   p->ticks_passed = 0;
-  if(p->back_trapframe)
-    kfree((void*)p->back_trapframe);
   p->back_trapframe = 0;
   p->is_in_cb = 0;
 
@@ -557,19 +558,17 @@ yield(void)
   acquire(&p->lock);
   
   p->state = RUNNABLE;
-  
-  if(p->ticks_interval!=0 && p->alarm_handler!=0)
+  if(p->ticks_interval!=0)
   {
     ++p->ticks_passed;
     if(p->ticks_passed >= p->ticks_interval && p->is_in_cb!=1)
     {
+      p->ticks_passed = 0;
       //  备份trapframe
       *(p->back_trapframe) = *(p->trapframe);
       //  handler使用当前trapframe
       p->trapframe->epc = (uint64) p->alarm_handler;
-      p->ticks_passed %= p->ticks_interval;
       p->is_in_cb = 1;
-      // p->ticks_interval = 0;              //  当前已经在alarm_handler了，就取消对alarm计数
     }
   }
   sched();
