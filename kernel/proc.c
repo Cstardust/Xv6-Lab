@@ -578,14 +578,14 @@ yield(void)
 // if(p->ticks_interval!=0 && p->alarm_handler!=0)
 // {
 //   ++p->ticks_passed;
-//   if(p->ticks_passed >= p->ticks_interval)
-//   {
-//     //  替换trapframe
-//     p->back_trapframe = p->trapframe;
-//     p->trapframe = kalloc();
-//     assert(p->trapframe!=0,"kalloc trapframe");
-//     *(p->trapframe) = *(p->back_trapframe);
-//     p->trapframe->epc = (uint64) p->alarm_handler;
+  // if(p->ticks_passed >= p->ticks_interval)
+  // {
+  //   //  替换trapframe
+  //   p->back_trapframe = p->trapframe;
+  //   p->trapframe = kalloc();
+  //   assert(p->trapframe!=0,"kalloc trapframe");
+  //   *(p->trapframe) = *(p->back_trapframe);
+  //   p->trapframe->epc = (uint64) p->alarm_handler;
 //     //  不止这些 handler还需要用到user process其他的上下文 因此直接赋值吧还是。
 //     // p->trapframe->kernel_trap = p->back_trapframe->kernel_trap;
 //     // p->trapframe->kernel_sp = p->back_trapframe->kernel_sp;
