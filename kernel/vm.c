@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include"spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -72,7 +73,13 @@ pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
+  {
+    struct proc *p = myproc();
+    printf("addr = %p\tMAXVA = %p\tsp = %p\n",va,MAXVA,p->trapframe->sp);
+    printf("addr < sp ? = %d\n",va<p->trapframe->sp);
+    vmprint(p->pagetable,0);
     panic("walk");
+  }
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
@@ -167,6 +174,62 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   return 0;
 }
 
+
+uint64 isvalidva_proc(uint64 va)
+{
+  //  Handle faults on the invalid page below the user stack.
+  //  Kill a process if it page-faults on a virtual memory address higher than any allocated with sbrk().
+  struct proc *p = myproc();
+  if(va <= p->trapframe->sp || va >= p->sz) return 0;
+    //  p->trapframe->sp trap时保留的用户栈顶
+  return 1;
+}
+
+
+//  对于合法但未分配物理内存和建立映射的虚拟地址va，进行lazyalloc
+void uvmlazyalloc(uint64 va)
+{
+  // #ifdef DEBUG
+  // printf("========uvmlazyalloc start==========\n");
+  // #endif
+  
+  struct proc *p = myproc();
+  va = PGROUNDDOWN(va);
+  //  为va申请对应的physical mem
+  uint64 pa = (uint64) kalloc();
+
+  // printf("  pagefault va %p , so kalloc pa %p for it\n",va,pa);
+  // #ifdef DEBUG
+  //   printf("  pagefault va %p , so kalloc pa %p for it\n",va,pa);
+  //   printf("  va %p corresponding pte2 %p pte1 %p pte0 %p\n",va,PX(2,va),PX(1,va),PX(0,va));
+  //   printf("  before mmappages\n");
+  //   vmprint(p->pagetable,0);
+  // #endif
+  
+  //  oom
+  if(pa == 0){
+    p->killed = 1;
+  }
+  //  申请成功 建立映射
+  else{
+    memset((void*)pa,0,PGSIZE);
+    //  映射
+    if(mappages(p->pagetable,va,PGSIZE,pa,PTE_W|PTE_R|PTE_U)!=0){
+      //  映射失败 释放pm
+      kfree((void*)pa);
+      p->killed = 1;
+    }
+  }
+
+  // #ifndef DEBUG  
+  // printf("  after mappages\n");
+  // vmprint(p->pagetable,0);
+
+  // printf("========uvmlazyalloc end==========\n");
+  // #endif
+}
+
+
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
@@ -181,9 +244,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue;
+      // panic("uvmunmap: walk ");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue;
+      // panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -236,12 +301,14 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
+    //  申请物理内存
     mem = kalloc();
     if(mem == 0){
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
+    //  建立va到pa的映射
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
@@ -283,6 +350,7 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
+      printf("free valid leaf will panic pte %p , pa %p\n",pte,PTE2PA(pte));
       panic("freewalk: leaf");
     }
   }
@@ -294,9 +362,19 @@ freewalk(pagetable_t pagetable)
 void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
+  // #ifdef DEBUG
+  //   printf("================uvmfree start===============\n");
+  //   printf("  sz = %d\n",sz);
+  //   vmprint(pagetable,0);
+  // #endif
+
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
+
+  // #ifdef DEBUG
+  //   printf("================uvmfree end===============\n");
+  // #endif
 }
 
 // Given a parent process's page table, copy
@@ -314,10 +392,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
+    //  pte 不存在
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
+    //  pte 无效
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue;
+      // panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -334,6 +416,38 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+
+
+int uvmcopy_parent2child(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      continue;
+      // panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      continue;
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((mem = kalloc()) == 0)
+      goto err;
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+  }
+  return 0;
+
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -439,4 +553,28 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+void vmprint(pagetable_t pagetable,int depth)
+{
+  if(depth > 2) return ;
+  if(depth == 0)
+    printf("  global kernel pgtbl %p page table %p pid = %d\n",(void*)kernel_pagetable,(void*)pagetable,myproc()->pid);
+
+  //  pagetable = 512 ptes = 512 uint64 = 512 * 8 bytes = 4096 bytes
+  for(int i=0;i<512;++i)
+  {
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V)
+    {
+      uint64 next = PTE2PA(pte);    //  nextlevel_pagetable_or_mem_pa
+      int cp = depth;
+      printf("  ");
+      while((cp--)>=0) {printf("||");if(cp!=-1) printf(" ");}
+      printf("%d: pte %p pa %p\n",i,(void*)pte,next);
+      vmprint((pagetable_t)next,depth+1);
+    }
+  }
+  return ;
 }

@@ -53,6 +53,8 @@ argraw(int n)
   return -1;
 }
 
+
+
 // Fetch the nth 32-bit system call argument.
 int
 argint(int n, int *ip)
@@ -67,7 +69,18 @@ argint(int n, int *ip)
 int
 argaddr(int n, uint64 *ip)
 {
+  //  *ip为user传入的user空间的虚拟addr
   *ip = argraw(n);
+
+  //  防止不是heap上懒分配的page
+  if(!isvalidva_proc(*ip)) return 0;
+  //  防止重复分配physical memory、重复mappage建立映射
+  pte_t *pte = walk(myproc()->pagetable,*ip,1);
+  //  当当前要使用的user的虚拟地址是一个未建立映射的虚拟地址（等待懒分配的），那么就lazyalloc它
+  if((pte == 0 || (*pte & PTE_V) == 0)){
+    printf("shc syscall leads to kernel page fault!\n");
+    uvmlazyalloc(*ip);
+  }
   return 0;
 }
 

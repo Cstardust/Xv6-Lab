@@ -2680,7 +2680,6 @@ main(int argc, char *argv[])
     printf("Usage: usertests [-c] [testname]\n");
     exit(1);
   }
-  
   struct test {
     void (*f)(char *);
     char *s;

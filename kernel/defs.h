@@ -82,6 +82,7 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+int uvmcopy_parent2child(pagetable_t old, pagetable_t new, uint64 sz);
 int             cpuid(void);
 void            exit(int);
 int             fork(void);
@@ -153,7 +154,11 @@ void            uartputc(int);
 void            uartputc_sync(int);
 int             uartgetc(void);
 
-// vm.c
+// 
+uint64          isvalidva_proc(uint64 va);
+pte_t *walk(pagetable_t pagetable, uint64 va, int alloc);
+void vmprint(pagetable_t pagetable,int depth);
+void            uvmlazyalloc(uint64 va);
 void            kvminit(void);
 void            kvminithart(void);
 uint64          kvmpa(uint64);

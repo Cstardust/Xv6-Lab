@@ -55,7 +55,7 @@ morecore(uint nu)
   if(p == (char*)-1)
     return 0;
   hp = (Header*)p;
-  hp->s.size = nu;
+  hp->s.size = nu;    //  对分配的内存块进行写。但如果没有分配，就会crash
   free((void*)(hp + 1));
   return freep;
 }

@@ -233,6 +233,7 @@ userinit(void)
   release(&p->lock);
 }
 
+//  只有sbrk会调用到这里
 // Grow or shrink user memory by n bytes.
 // Return 0 on success, -1 on failure.
 int
@@ -243,13 +244,25 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
-      return -1;
-    }
+    // if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    //   return -1;
+    // }
+    //  只设定合法但不kalloc 也不建立映射
+    sz += n;
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
-  p->sz = sz;
+  
+  // #ifdef DEBUG
+  //   printf("==============sbrk start============\n");
+  //   printf("  sbrk -> growproc : n = %d , oldsz = %d , newsz = %d\n",n,p->sz,sz);
+  //   vmprint(p->pagetable,0);
+  // #endif   
+    p->sz = sz;
+
+  // #ifdef DEBUG
+  //   printf("==============sbrk end============\n");
+  // #endif
   return 0;
 }
 
@@ -268,7 +281,12 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  // if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  //   freeproc(np);
+  //   release(&np->lock);
+  //   return -1;
+  // }
+  if(uvmcopy_parent2child(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -694,3 +712,5 @@ procdump(void)
     printf("\n");
   }
 }
+
+

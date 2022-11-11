@@ -173,6 +173,12 @@ filewrite(struct file *f, uint64 addr, int n)
       i += r;
     }
     ret = (i == n ? n : -1);
+    // if(ret == -1)
+    // {
+    //   printf("i = %d , n = %d\n",i,n);
+    //   vmprint(myproc()->pagetable,0);
+    //   panic("why -1");
+    // }
   } else {
     panic("filewrite");
   }

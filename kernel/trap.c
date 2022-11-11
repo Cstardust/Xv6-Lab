@@ -65,7 +65,19 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if(r_scause() == 15 || r_scause() == 13){
+    // printf("$pc leads to pagefault %p addr leads to pagefault %p\n",p->trapframe->epc,r_stval());
+    // printf("inst is %s\n",*((char*)p->trapframe->epc));
+    // vmprint(p->pagetable,0);
+    // panic("page fault handler");
+    uint64 pagefault_va = r_stval();
+    if(!isvalidva_proc(pagefault_va)){ 
+      p->killed = 1;
+    }else{
+      uvmlazyalloc(pagefault_va);
+      //  此时p->trapframe->epc还是指向ecall 重新执行ecall这个系统调用 ? 如何触发到r_scause的。具体一点?
+    }
+  }else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -147,6 +159,13 @@ kerneltrap()
     printf("scause %p\n", scause);
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
+  }
+
+
+  if(r_scause()==15 || r_scause() == 13)
+  {
+    vmprint(myproc()->pagetable,0);
+    panic("kernel page fault");
   }
 
   // give up the CPU if this is a timer interrupt.
