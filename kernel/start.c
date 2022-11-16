@@ -33,11 +33,15 @@ start()
   // disable paging for now.
   w_satp(0);
 
+  // 所有的中断都设置在Supervisor mode
   // delegate all interrupts and exceptions to supervisor mode.
   w_medeleg(0xffff);
   w_mideleg(0xffff);
-  w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
+  // 设置SIE寄存器来接收External，软件和定时器中断，
+  w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
+  
+  // 初始化定时器
   // ask for clock interrupts.
   timerinit();
 

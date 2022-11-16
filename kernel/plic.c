@@ -11,14 +11,16 @@
 void
 plicinit(void)
 {
+  //  设置PLIC会接收哪些中断，进而将中断路由到CPU
   // set desired IRQ priorities non-zero (otherwise disabled).
-  *(uint32*)(PLIC + UART0_IRQ*4) = 1;
-  *(uint32*)(PLIC + VIRTIO0_IRQ*4) = 1;
+  *(uint32*)(PLIC + UART0_IRQ*4) = 1;   //  使能了UART的中断
+  *(uint32*)(PLIC + VIRTIO0_IRQ*4) = 1; //  设置PLIC接收来自IO磁盘的中断
 }
 
 void
 plicinithart(void)
 {
+  // 每个CPU的核都需要调用plicinithart函数表明**对于哪些外设中断感兴趣**。
   int hart = cpuid();
   
   // set uart's enable bit for this hart's S-mode. 

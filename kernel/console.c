@@ -90,11 +90,13 @@ consoleread(int user_dst, uint64 dst, int n)
   while(n > 0){
     // wait until interrupt handler has put some
     // input into cons.buffer.
+    //  这不就是条件变量配合锁使用。
     while(cons.r == cons.w){
       if(myproc()->killed){
         release(&cons.lock);
         return -1;
       }
+      //  等待buffer中有可读数据
       sleep(&cons.r, &cons.lock);
     }
 
@@ -111,6 +113,7 @@ consoleread(int user_dst, uint64 dst, int n)
 
     // copy the input byte to the user-space buffer.
     cbuf = c;
+    //  将字符c传给user层地址空间
     if(either_copyout(user_dst, dst, &cbuf, 1) == -1)
       break;
 

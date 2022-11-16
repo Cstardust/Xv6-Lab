@@ -261,6 +261,8 @@ r_time()
 static inline void
 intr_on()
 {
+  // 设置SSTATUS寄存器，打开中断标志位
+  //  这句应当是这是设置标志sstaus为可以接受所有中断。
   w_sstatus(r_sstatus() | SSTATUS_SIE);
 }
 

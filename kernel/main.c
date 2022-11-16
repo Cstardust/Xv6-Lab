@@ -11,7 +11,7 @@ void
 main()
 {
   if(cpuid() == 0){
-    consoleinit();
+    consoleinit();    //  uart可以产生中断
     printfinit();
     printf("\n");
     printf("xv6 kernel is booting\n");
@@ -22,8 +22,11 @@ main()
     procinit();      // process table
     trapinit();      // trap vectors
     trapinithart();  // install kernel trap vector
+
     plicinit();      // set up interrupt controller
-    plicinithart();  // ask PLIC for device interrupts
+    plicinithart();  // ask PLIC for device interrupts  
+    //  此后PLIC可以传递中断到CPU。但是CPU还没设置好自己可以接收中断。
+    
     binit();         // buffer cache
     iinit();         // inode cache
     fileinit();      // file table
@@ -41,5 +44,5 @@ main()
     plicinithart();   // ask PLIC for device interrupts
   }
 
-  scheduler();        
+  scheduler();        //  CPU设置自己可以接收中断
 }

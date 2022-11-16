@@ -75,8 +75,9 @@ usertrap(void)
       p->killed = 1;
     }else{
       uvmlazyalloc(pagefault_va);
-      //  此时p->trapframe->epc还是指向ecall 重新执行ecall这个系统调用 ? 如何触发到r_scause的。具体一点?
     }
+    //  如何触发到r_scause的。具体一点?。解决了，这里看到的pgfault应当是由mmu触发。见blog
+    //  此时p->trapframe->epc还是指向ecall 稍后重新执行ecall这个系统调用。
   }else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -162,11 +163,11 @@ kerneltrap()
   }
 
 
-  if(r_scause()==15 || r_scause() == 13)
-  {
-    vmprint(myproc()->pagetable,0);
-    panic("kernel page fault");
-  }
+  // if(r_scause()==15 || r_scause() == 13)
+  // {
+  //   vmprint(myproc()->pagetable,0);
+  //   panic("kernel page fault");
+  // }
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)

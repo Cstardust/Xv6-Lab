@@ -13,6 +13,7 @@
 // the UART control registers are memory-mapped
 // at address UART0. this macro returns the
 // address of one of the registers.
+//  对设备寄存器映射到的地址进行读写；即是在对设备的寄存器进行读写。
 #define Reg(reg) ((volatile unsigned char *)(UART0 + reg))
 
 // the UART control registers.
@@ -49,31 +50,34 @@ extern volatile int panicked; // from printf.c
 
 void uartstart();
 
+//  配置好uart芯片，使其可以被使用
+//  uartinit之后，uart就可以产生中断了。
+//  但是由于还没对PLIC编程，因此CPU无法感知到uart发出的中断。
 void
 uartinit(void)
 {
+// the UART control registers are memory-mapped
+// at address UART0. this macro returns the
+// address of one of the registers.
+//  对设备寄存器映射到的地址进行读写；即是在对设备的寄存器进行读写。
+// #define Reg(reg) ((volatile unsigned char *)(UART0 + reg))
+// #define ReadReg(reg) (*(Reg(reg)))
+// #define WriteReg(reg, v) (*(Reg(reg)) = (v))
   // disable interrupts.
   WriteReg(IER, 0x00);
-
   // special mode to set baud rate.
   WriteReg(LCR, LCR_BAUD_LATCH);
-
   // LSB for baud rate of 38.4K.
   WriteReg(0, 0x03);
-
   // MSB for baud rate of 38.4K.
   WriteReg(1, 0x00);
-
   // leave set-baud mode,
   // and set word length to 8 bits, no parity.
   WriteReg(LCR, LCR_EIGHT_BITS);
-
   // reset and enable FIFOs.
   WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
-
   // enable transmit and receive interrupts.
   WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
-
   initlock(&uart_tx_lock, "uart");
 }
 
@@ -83,6 +87,7 @@ uartinit(void)
 // because it may block, it can't be called
 // from interrupts; it's only suitable for use
 // by write().
+//  将字符C写入驱动的buffer queue中。
 void
 uartputc(int c)
 {
@@ -134,6 +139,7 @@ uartputc_sync(int c)
 // in the transmit buffer, send it.
 // caller must hold uart_tx_lock.
 // called from both the top- and bottom-half.
+//  通知设备执行操作
 void
 uartstart()
 {
@@ -149,13 +155,16 @@ uartstart()
       // it will interrupt when it's ready for a new byte.
       return;
     }
-    
+    //  从uart_tx_buf中取出一个char,将该char送入uart设备
     int c = uart_tx_buf[uart_tx_r];
     uart_tx_r = (uart_tx_r + 1) % UART_TX_BUF_SIZE;
     
     // maybe uartputc() is waiting for space in the buffer.
     wakeup(&uart_tx_r);
-    
+    //  将char写入uart的寄存器中
+    //  也即，告诉设备，我这里有一个字节需要你来发送。
+    //  数据送到设备后，系统调用即返回，user shell继续执行
+    //  与此同时，uart设备将数据送出。
     WriteReg(THR, c);
   }
 }
@@ -180,6 +189,7 @@ void
 uartintr(void)
 {
   // read and process incoming characters.
+    //  这里操作的buffer是inputBuffer(对于shell来说) 是一个为了从uart读入字符给上层的buffer
   while(1){
     int c = uartgetc();
     if(c == -1)
@@ -188,6 +198,7 @@ uartintr(void)
   }
 
   // send buffered characters.
+    //  这里操作的buffer是outputBuffer(对于shell来说) 是一个为了从将字符从上层送入uart的buffer。
   acquire(&uart_tx_lock);
   uartstart();
   release(&uart_tx_lock);

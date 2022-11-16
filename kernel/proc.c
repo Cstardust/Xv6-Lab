@@ -480,8 +480,10 @@ scheduler(void)
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
+    //  CPU设置自己可以接收中断 $SSTAUS
     intr_on();
-    
+   //  设置SSTATUS寄存器(为可以接受所有中断)，打开中断标志位. 。
+   //  w_sstatus(r_sstatus() | SSTATUS_SIE);
     int nproc = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);

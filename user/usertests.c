@@ -2232,7 +2232,7 @@ sbrkarg(char *s)
     exit(1);
   }
   if ((n = write(fd, a, PGSIZE)) < 0) {
-    printf("%s: write sbrk failed\n", s);
+    printf("%s: write sbrk failed n = %d\n", s,n);
     exit(1);
   }
   close(fd);
