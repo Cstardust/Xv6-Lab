@@ -29,7 +29,7 @@ simpletest()
 
   int pid = fork();
   if(pid < 0){
-    printf("fork() failed\n");
+    printf("fork() failed since there's no enough mem\n");
     exit(-1);
   }
 

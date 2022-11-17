@@ -68,9 +68,11 @@ copyin(char *s)
 
 // what if you pass ridiculous pointers to system calls
 // that write user memory with copyout?
+//  在walkaddrforwrite对根据va获得的pte加一个判断 无效地址则按失败处理(walkaddrforwrite return 0 --> copout return -1 ---> write return -1)
 void
 copyout(char *s)
 {
+  // ridiculous pointers
   uint64 addrs[] = { 0x80000000LL, 0xffffffffffffffff };
 
   for(int ai = 0; ai < 2; ai++){

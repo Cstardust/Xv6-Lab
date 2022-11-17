@@ -32,6 +32,7 @@ acquire(struct spinlock *lk)
   while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
     ;
 
+
   // Tell the C compiler and the processor to not move loads or stores
   // past this point, to ensure that the critical section's memory
   // references happen strictly after the lock is acquired.

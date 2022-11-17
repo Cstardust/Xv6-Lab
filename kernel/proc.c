@@ -258,6 +258,7 @@ growproc(int n)
 int
 fork(void)
 {
+  // printf("fork\n");
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
@@ -267,13 +268,20 @@ fork(void)
     return -1;
   }
 
+  //  copy on write
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+  
   np->sz = p->sz;
+  //  置为copy on write标志
+  // leafptecow(p->pagetable,0);
+  // leafptecow(np->pagetable,0);
+  leafptecow(p->pagetable,p->sz);
+  leafptecow(np->pagetable,np->sz);
 
   np->parent = p;
 

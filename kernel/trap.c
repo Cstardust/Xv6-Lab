@@ -36,6 +36,7 @@ trapinithart(void)
 void
 usertrap(void)
 {
+  // printf("...");
   int which_dev = 0;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
@@ -65,6 +66,17 @@ usertrap(void)
     intr_on();
 
     syscall();
+    //  似乎还并没有走到这个分支。可叹。落叶飘零！
+  } else if(r_scause() == 15){    //  检验页面写错误
+    //  发生页面错误的va
+    uint64 va = r_stval();
+    // printf("pgfault %p\n",va);
+    //  分配新physical mem，建立新映射，不再和parent 映射在同一physical mem
+    int ret = walkaddrforwrite(p->pagetable,va);
+    //  待做：这个porcess好了，可是另一个process呢？如何使其变为可写？当那个process想写的时候,判断了引用计数为1,则直接就可以写了.
+    //  没有内存了. 杀掉process.不杀掉的话会陷入死循环. 回到user,发现还是不可写.然后硬件触发.然后继续到这里.还是没内存.循环往复.
+    if(ret == 0)
+      p->killed = 1;
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -138,6 +150,8 @@ kerneltrap()
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
   
+  // printf("sepc = %p ; sstatus = %p scause = %p mem = %p\n",sepc,sstatus,scause,r_stval());
+
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
   if(intr_get() != 0)

@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -54,6 +56,29 @@ kvminithart()
 {
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
+}
+
+
+void vmprint(pagetable_t pagetable,int depth)
+{
+  if(depth > 2) return ;
+  if(depth == 0)
+    printf("page table %p\n",(void*)pagetable);
+
+  //  pagetable = 512 ptes = 512 uint64 = 512 * 8 bytes = 4096 bytes
+  for(int i=0;i<512;++i)
+  {
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V)
+    {
+      uint64 next = PTE2PA(pte);    //  nextlevel_pagetable_or_mem_pa
+      int cp = depth;
+      while((cp--)>=0) {printf("||");if(cp!=-1) printf(" ");}
+      printf("%d: pte %p pa %p\n",i,(void*)pte,next);
+      vmprint((pagetable_t)next,depth+1);
+    }
+  }
+  return ;
 }
 
 // Return the address of the PTE in page table pagetable
@@ -111,6 +136,56 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
+//  copyout 调用
+uint64 walkaddrforwrite(pagetable_t pgtbl,uint64 va)
+{
+  // printf("walkaddrforwrite va = %p\n",va);
+  if(va >= MAXVA) return 0;
+
+  pte_t *pte = walk(pgtbl,va,0);
+  if(pte == 0 || *pte == 0) return 0;
+
+  //  需要copy on write
+  if(((*pte) & PTE_W) == 0)
+  {
+    if(((*pte) & PTE_RSW_1) == 0)
+    {
+      panic("pte is supposed to be cow when pte_w == 0");
+    }
+    else
+    {
+      //  child 写 那么 去找parent，去改变parent的pte 标记为可写。
+      //  那么如果parent写呢？如何改变child？
+      //  get the parent pgtbl
+      // struct proc* parent = myproc()->parent;
+      // pagetable_t parent_pgtbl = parent->pagetable;
+      if(getref(PTE2PA(*pte))<=1)
+      {
+        *pte |= PTE_W;
+        *pte &= ~PTE_RSW_1; 
+        return PTE2PA(*pte);
+      }
+
+      uint64 old_pa = PTE2PA(*pte);
+      uint64 mem = (uint64) kalloc();
+      if(mem == 0)  return 0;         //  没有空余内存了
+      //  copy memory from old to new 
+      memmove((void*)mem,(const void*)old_pa,PGSIZE);
+      uvmunmap(pgtbl,PGROUNDDOWN(va),1,1);   //  munmap 1 : --ref_cnt
+      //  建立va到新pa的新映射
+      mappages(pgtbl,PGROUNDDOWN(va),PGSIZE,mem,PTE_W|PTE_R|PTE_X|PTE_U);
+      return mem;
+    }
+  }
+  
+  //  不需要copy on write
+  return PTE2PA(*pte);
+}
+
+// *pte |= PTE_W;
+// *pte &= ~PTE_RSW_1;
+  
+
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
@@ -159,6 +234,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & PTE_V)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+    
+    // //  ++ref。建立映射，则++ref。
+    // incref(pa);
+
     if(a == last)
       break;
     a += PGSIZE;
@@ -186,8 +265,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
+
+    uint64 pa = PTE2PA(*pte);
+    // decref(pa);
     if(do_free){
-      uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
     *pte = 0;
@@ -289,6 +370,59 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+
+//  将leafpte变成copy on write的
+  //  将leaf pte置为只读
+  //  将leaf pte的RSW bit置为1 代表等待写时复制
+// void leafptecow(pagetable_t pgtbl,int level)
+// {
+  // struct proc *p = myproc();
+  // int sz = p->sz;
+  // if(level > 2) return ;
+  // for(int i=0;i<512;++i)
+  // {
+  //   pte_t pte = pgtbl[i];
+  //   if(pte & PTE_V)
+  //   {
+  //     //  not leaf
+  //     if(level < 2)
+  //     {
+  //       uint64 child = PTE2PA(pte);
+  //       leafptecow((pagetable_t)child,level+1);
+  //     }
+  //     //  leaf
+  //     else
+  //     {
+  //       //  不可写
+  //       pgtbl[i] &= (~PTE_W);
+  //       //  cow 页面
+  //       pgtbl[i] |= PTE_RSW_1;
+  //     }
+  //   }
+  // }
+// }
+
+//  不能将trapframe也置成只读!
+//  将pgtbl的va的[0,sz]对应的pte 全部置为只读
+void leafptecow(pagetable_t pgtbl,uint64 sz)
+{
+  pte_t *pte;
+  for(int i = 0;i < sz ; i+=PGSIZE)
+  {
+    if((pte = walk(pgtbl,i,0))==0)
+    {
+      panic("uvmcopy : pte should exist");
+    }
+    if((*pte & PTE_V) == 0)
+    {
+      panic("uvmcopy : page not present");
+    }
+    *pte &= ~(PTE_W);
+    *pte |= PTE_RSW_1;
+  }
+}
+
+
 // Free user memory pages,
 // then free page-table pages.
 void
@@ -299,6 +433,8 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
+
+//  copy on write
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the
@@ -308,10 +444,11 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
+  // printf("uvmcopy\n");
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +456,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    // *pte = (*pte & ~PTE_W) | PTE_RSW_1;
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    //  对于两个user pgtbl都使用的mem，则引用计数++
+    incref(pa);
   }
   return 0;
 
@@ -355,10 +491,9 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkaddrforwrite(pagetable,va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
@@ -440,3 +575,4 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
