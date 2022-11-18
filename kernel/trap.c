@@ -66,7 +66,6 @@ usertrap(void)
     intr_on();
 
     syscall();
-    //  似乎还并没有走到这个分支。可叹。落叶飘零！
   } else if(r_scause() == 15){    //  检验页面写错误
     //  发生页面错误的va
     uint64 va = r_stval();

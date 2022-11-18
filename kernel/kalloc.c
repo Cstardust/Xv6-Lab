@@ -16,7 +16,7 @@ extern char end[]; // first address after kernel.
 
 
 #define IDX(pa) ((pa - KERNBASE) / PGSIZE)
-//  每一个物理page的引用计数
+//  每一个physical page的引用计数
 #define MAXN ((PHYSTOP - KERNBASE) / PGSIZE + 5)
 //  仅限DRAM进行引用计数 即 pa位于 KERNBASE PHYSTOP之间
 struct ref{
@@ -131,11 +131,6 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // // Fill with junk to catch dangling refs.
-  // memset(pa, 1, PGSIZE);
-
-  // r = (struct run*)pa;
-
   acquire(&kmem.lock);
 
   // if(refs[idx].ref_cnt < 1) panic("ref_cnt is expected to be > 0");
@@ -161,7 +156,7 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
-extern pagetable_t kernel_pagetable;
+// extern pagetable_t kernel_pagetable;
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -176,7 +171,8 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if((uint64)r >= KERNBASE && (uint64)r<=PHYSTOP)
+  // if((uint64)r >= KERNBASE && (uint64)r<=PHYSTOP)
+  if((char*)r >= end && (uint64)r < PHYSTOP)
   {
     if(getref((uint64)r)!=0)
     {
@@ -188,9 +184,8 @@ kalloc(void)
 
   // ++ref
   //  0.0版本：incref((uint64)r);
-  //  1.0版本：不应当在这里，应当在建设映射 如 mappages 的时候++ref 
+  //  1.0版本：错误的认为不应当在这里，应当在建设映射 如 mappages 的时候++ref 
   //  2.0版本
-
   if(r)
   {
     memset((char*)r, 5, PGSIZE); // fill with junk

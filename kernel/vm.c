@@ -136,7 +136,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
-//  copyout 调用
+//  copyout and usertrap 调用
 uint64 walkaddrforwrite(pagetable_t pgtbl,uint64 va)
 {
   // printf("walkaddrforwrite va = %p\n",va);
@@ -182,8 +182,6 @@ uint64 walkaddrforwrite(pagetable_t pgtbl,uint64 va)
   return PTE2PA(*pte);
 }
 
-// *pte |= PTE_W;
-// *pte &= ~PTE_RSW_1;
   
 
 // add a mapping to the kernel page table.
@@ -371,37 +369,6 @@ freewalk(pagetable_t pagetable)
 }
 
 
-//  将leafpte变成copy on write的
-  //  将leaf pte置为只读
-  //  将leaf pte的RSW bit置为1 代表等待写时复制
-// void leafptecow(pagetable_t pgtbl,int level)
-// {
-  // struct proc *p = myproc();
-  // int sz = p->sz;
-  // if(level > 2) return ;
-  // for(int i=0;i<512;++i)
-  // {
-  //   pte_t pte = pgtbl[i];
-  //   if(pte & PTE_V)
-  //   {
-  //     //  not leaf
-  //     if(level < 2)
-  //     {
-  //       uint64 child = PTE2PA(pte);
-  //       leafptecow((pagetable_t)child,level+1);
-  //     }
-  //     //  leaf
-  //     else
-  //     {
-  //       //  不可写
-  //       pgtbl[i] &= (~PTE_W);
-  //       //  cow 页面
-  //       pgtbl[i] |= PTE_RSW_1;
-  //     }
-  //   }
-  // }
-// }
-
 //  不能将trapframe也置成只读!
 //  将pgtbl的va的[0,sz]对应的pte 全部置为只读
 void leafptecow(pagetable_t pgtbl,uint64 sz)
@@ -448,7 +415,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -456,7 +422,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    // *pte = (*pte & ~PTE_W) | PTE_RSW_1;
     flags = PTE_FLAGS(*pte);
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
