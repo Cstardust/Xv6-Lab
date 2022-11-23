@@ -124,7 +124,9 @@ found:
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
+  //  设置scheduler对该proc第一次swtch之后切换到的指令地址：forkret
+  p->context.ra = (uint64)forkret;    
+  //  设置proc的stack
   p->context.sp = p->kstack + PGSIZE;
 
   return p;
@@ -293,6 +295,11 @@ fork(void)
 
   pid = np->pid;
 
+  //  设置新fork出的process为runnable
+  //  之后scheduler thread 回看到该thread为runnable，
+  //  然后swtch切换到该thread
+  //  会返回到np thread的哪条指令呢？
+  //  就是我们之前在allocproc中设置的forkret
   np->state = RUNNABLE;
 
   release(&np->lock);
@@ -466,7 +473,9 @@ scheduler(void)
     
     int nproc = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
+      acquire(&p->lock);  
+      //  这里上的p->lock 如果该thread p被替换到cpu上运行,则在kernel thread p中释放
+      //  如果该thread p 没被替换到上面运行,则在循环末尾释放。
       if(p->state != UNUSED) {
         nproc++;
       }
@@ -474,10 +483,19 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
+        
+        //  令cpu运行kernel thread p
+        //  即将运行p，故先设置状态为RUNNING
+        p->state = RUNNING;   
+        //  即将运行p，故先设置cpu上正在运行的proc为p
+        c->proc = p;          
+        //  context switching , 切换到kernel thread p。之后cpu run kernel thread
+        swtch(&c->context, &p->context);  
+        //  after a while
+        //  从swtch返回。
+        //  kernel thread p 切换回 scheduler thread
+        //  此时cpu上没有任何正在运行的kernel thread 和 user thread。只有scheduler thread
+        
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
@@ -514,7 +532,9 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  //  将当前cpu上的reg保存在p->context 上，并将mycpu()->context 加载到cpu的reg上
+  //  mycpu()->context 是 该cpu调度器线程的上下文
+  swtch(&p->context, &mycpu()->context);          //  一次swtch
   mycpu()->intena = intena;
 }
 
@@ -523,9 +543,11 @@ void
 yield(void)
 {
   struct proc *p = myproc();
-  acquire(&p->lock);
+  //  这里获得的lock在scheduler释放
+  acquire(&p->lock);  
   p->state = RUNNABLE;
-  sched();
+  sched();  //  swtch() : kernel thread -> scheduler thread
+  //  这里释放的是在scheduler中获得的lock
   release(&p->lock);
 }
 
