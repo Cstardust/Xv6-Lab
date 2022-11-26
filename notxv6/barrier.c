@@ -12,6 +12,8 @@ struct barrier {
   pthread_cond_t barrier_cond;
   int nthread;      // Number of threads that have reached this round of the barrier
   int round;     // Barrier round
+  pthread_cond_t finished_cond;
+  int finished;
 } bstate;
 
 static void
@@ -20,18 +22,50 @@ barrier_init(void)
   assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0);
   assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0);
   bstate.nthread = 0;
+  bstate.finished = 1;
 }
 
-static void 
-barrier()
+static void barrier()
 {
-  // YOUR CODE HERE
-  //
-  // Block until all threads have called barrier() and
-  // then increment bstate.round.
-  //
-  
+  pthread_mutex_lock(&bstate.barrier_mutex);
+
+  //  当上一轮结束了 再来启动下一轮的计数。  
+  while(!(bstate.finished==1))
+  {
+    pthread_cond_wait(&bstate.finished_cond,&bstate.barrier_mutex);
+  }
+
+  ++bstate.nthread;
+  //  是否会存在，本轮的thread还没全部离开，下一轮的thread就来了的情况？
+    //  我认为显然是会出现的。
+  if(bstate.nthread != nthread)
+  {
+    //  其他线程等待最后一个线程到达
+    pthread_cond_wait(&bstate.barrier_cond,&bstate.barrier_mutex);
+    --bstate.nthread;
+    if(bstate.nthread == 0)
+    {
+      bstate.finished = 1;            //  告诉下一轮来的thread 本轮结束，不必等。
+      pthread_cond_broadcast(&bstate.finished_cond);      
+    }
+    pthread_mutex_unlock(&bstate.barrier_mutex);
+  }
+  else
+  {
+    //  最后一个到达的线程进行work
+    bstate.finished = 0;            //  告诉下一轮来的thread 本轮未结束，等着。
+    --bstate.nthread;
+    ++bstate.round;
+    if(bstate.nthread == 0)
+    {
+      bstate.finished = 1;            //  告诉下一轮来的thread 本轮结束，不必等。
+      pthread_cond_broadcast(&bstate.finished_cond);      
+    }
+    pthread_mutex_unlock(&bstate.barrier_mutex);
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  }
 }
+
 
 static void *
 thread(void *xa)
