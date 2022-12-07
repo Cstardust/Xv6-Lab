@@ -79,28 +79,37 @@ testsymlink(void)
   if(st.type != T_SYMLINK)
     fail("b isn't a symlink");
 
+
   fd2 = open("/testsymlink/b", O_RDWR);
   if(fd2 < 0)
     fail("failed to open b");
+
+
   read(fd2, &c, 1);
   if (c != 'a')
     fail("failed to read bytes from b");
+  
 
   unlink("/testsymlink/a");
   if(open("/testsymlink/b", O_RDWR) >= 0)
     fail("Should not be able to open b after deleting a");
 
+
   r = symlink("/testsymlink/b", "/testsymlink/a");
   if(r < 0)
     fail("symlink a -> b failed");
 
+
   r = open("/testsymlink/b", O_RDWR);
   if(r >= 0)
     fail("Should not be able to open b (cycle b->a->b->..)\n");
+
   
   r = symlink("/testsymlink/nonexistent", "/testsymlink/c");
   if(r != 0)
     fail("Symlinking to nonexistent file should succeed\n");
+
+
 
   r = symlink("/testsymlink/2", "/testsymlink/1");
   if(r) fail("Failed to link 1->2");
@@ -108,6 +117,7 @@ testsymlink(void)
   if(r) fail("Failed to link 2->3");
   r = symlink("/testsymlink/4", "/testsymlink/3");
   if(r) fail("Failed to link 3->4");
+
 
   close(fd1);
   close(fd2);
@@ -140,7 +150,8 @@ concur(void)
   int nchild = 2;
 
   printf("Start: test concurrent symlinks\n");
-    
+
+
   fd = open("/testsymlink/z", O_CREATE | O_RDWR);
   if(fd < 0) {
     printf("FAILED: open failed");
@@ -168,21 +179,29 @@ concur(void)
               exit(1);
             }
           }
+          // printf("i %d pid %d\n",i,pid);
         } else {
+          // printf("j %d pid %d\n",i,pid);
           unlink("/testsymlink/y");
         }
       }
+      ;
       exit(0);
     }
   }
 
+  printf("test0\n");
+
+
   int r;
   for(int j = 0; j < nchild; j++) {
     wait(&r);
+    printf("test1\n");
     if(r != 0) {
       printf("test concurrent symlinks: failed\n");
       exit(1);
     }
   }
+
   printf("test concurrent symlinks: ok\n");
 }

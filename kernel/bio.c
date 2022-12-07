@@ -24,8 +24,8 @@
 #include "buf.h"
 
 struct {
-  struct spinlock lock;
-  struct buf buf[NBUF];
+  struct spinlock lock;       //  保护buf链表
+  struct buf buf[NBUF];       //  这个cache是谁的cache？是inode blocks的cache还是 data blocks的cache ?
 
   // Linked list of all buffers, through prev/next.
   // Sorted by how recently the buffer was used.
@@ -102,7 +102,11 @@ bread(uint dev, uint blockno)
   return b;
 }
 
-// Write b's contents to disk.  Must be locked.
+//  Write b's contents to disk.  Must be locked.
+//  bwrite将buf->data的内容回写到(dev, blockno)上，
+//  bread bwrite 对设备的读写操作都是通过调用设备驱动代码所提供的virtio_disk_rw来实现的
+//  这也印证了我们在设备驱动层所提出的结论：操作系统与磁盘的一切交互（文件系统的请求、数据的读写等），全部通过对特定盘块的读写操作来实现。
+//  virtio_disk_rw 通过struct buf b中记录的block no 来将其写入到disk中正确的block
 void
 bwrite(struct buf *b)
 {
@@ -119,10 +123,11 @@ brelse(struct buf *b)
   if(!holdingsleep(&b->lock))
     panic("brelse");
 
-  releasesleep(&b->lock);
+  releasesleep(&b->lock);   //  结束对block num的读写操作，则释放该block cache buf的锁
 
   acquire(&bcache.lock);
   b->refcnt--;
+  //  放到bcache list 头部
   if (b->refcnt == 0) {
     // no one is waiting for it.
     b->next->prev = b->prev;

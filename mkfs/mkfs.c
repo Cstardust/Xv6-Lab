@@ -243,7 +243,7 @@ ialloc(ushort type)
 }
 
 void
-balloc(int used)
+balloc(int used)  //  used = metablocks
 {
   uchar buf[BSIZE];
   int i;
@@ -251,10 +251,12 @@ balloc(int used)
   printf("balloc: first %d blocks have been allocated\n", used);
   assert(used < BSIZE*8);
   bzero(buf, BSIZE);
+  //  将bitmap上boot superblock logging inodes bitmap所对应的bit全部置1
   for(i = 0; i < used; i++){
     buf[i/8] = buf[i/8] | (0x1 << (i%8));
   }
   printf("balloc: write bitmap block at sector %d\n", sb.bmapstart);
+  //  初始化disk上的bitmap区域
   wsect(sb.bmapstart, buf);
 }
 

@@ -26,6 +26,7 @@ fileinit(void)
 }
 
 // Allocate a file structure.
+//  分配文件,返回一个free的struct file
 struct file*
 filealloc(void)
 {
@@ -44,6 +45,7 @@ filealloc(void)
 }
 
 // Increment ref count for file f.
+//  创建重复引用
 struct file*
 filedup(struct file *f)
 {
@@ -56,6 +58,7 @@ filedup(struct file *f)
 }
 
 // Close file f.  (Decrement ref count, close when reaches 0.)
+//  释放引用
 void
 fileclose(struct file *f)
 {
@@ -68,6 +71,7 @@ fileclose(struct file *f)
     release(&ftable.lock);
     return;
   }
+  //  f.ref == 0;
   ff = *f;
   f->ref = 0;
   f->type = FD_NONE;
@@ -103,6 +107,7 @@ filestat(struct file *f, uint64 addr)
 
 // Read from file f.
 // addr is a user virtual address.
+//  读取数据
 int
 fileread(struct file *f, uint64 addr, int n)
 {
@@ -118,10 +123,16 @@ fileread(struct file *f, uint64 addr, int n)
       return -1;
     r = devsw[f->major].read(1, addr, n);
   } else if(f->type == FD_INODE){
+    // printf("============read file============\n");
+    //  读写ip之前必须先ilock
     ilock(f->ip);
+    //  f->off即为操作文件时的起始偏移量
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
     iunlock(f->ip);
+    //  ilock(inode)有一个方便的副作用，
+    //  即读取和写入偏移量以原子方式更新，
+    //  因此，对同一文件的同时多次写入不能覆盖彼此的数据，尽管他们的写入最终可能是交错的。
   } else {
     panic("fileread");
   }
@@ -131,6 +142,7 @@ fileread(struct file *f, uint64 addr, int n)
 
 // Write to file f.
 // addr is a user virtual address.
+//  写入数据
 int
 filewrite(struct file *f, uint64 addr, int n)
 {
@@ -146,12 +158,19 @@ filewrite(struct file *f, uint64 addr, int n)
       return -1;
     ret = devsw[f->major].write(1, addr, n);
   } else if(f->type == FD_INODE){
+    //  debug
+    // printf("test debug\n");
+    // char debug_dst[50] = {0};
+    // copyin(myproc()->pagetable,debug_dst,addr,n);
+    // printf("============write %s to file start============\n",debug_dst);
+    
     // write a few blocks at a time to avoid exceeding
     // the maximum log transaction size, including
     // i-node, indirect block, allocation blocks,
     // and 2 blocks of slop for non-aligned writes.
     // this really belongs lower down, since writei()
     // might be writing a device like the console.
+    //  一个事务中最多让写多少bytes
     int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
     int i = 0;
     while(i < n){
@@ -159,11 +178,17 @@ filewrite(struct file *f, uint64 addr, int n)
       if(n1 > max)
         n1 = max;
 
+      //  开启事务
       begin_op();
+      //  锁定inode
+        //  对同一文件的同时多次写入不能覆盖彼此的数据，尽管他们的写入最终可能是交错的。
       ilock(f->ip);
+      //  写 + 维护偏移量offset
       if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
         f->off += r;
+      //  解锁inode
       iunlock(f->ip);
+      //  提交事务
       end_op();
 
       if(r != n1){
@@ -173,6 +198,7 @@ filewrite(struct file *f, uint64 addr, int n)
       i += r;
     }
     ret = (i == n ? n : -1);
+    // printf("============write %s to file end============\n",debug_dst);
   } else {
     panic("filewrite");
   }

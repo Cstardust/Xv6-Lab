@@ -5,7 +5,7 @@ struct file {
   char writable;
   struct pipe *pipe; // FD_PIPE
   struct inode *ip;  // FD_INODE and FD_DEVICE
-  uint off;          // FD_INODE
+  uint off;          // FD_INODE  I/O偏移量
   short major;       // FD_DEVICE
 };
 
@@ -19,14 +19,15 @@ struct inode {
   uint inum;          // Inode number
   int ref;            // Reference count
   struct sleeplock lock; // protects everything below here
+  //  确保独占的访问 inode的size，data block等
   int valid;          // inode has been read from disk?
 
   short type;         // copy of disk inode
   short major;
   short minor;
-  short nlink;
-  uint size;
-  uint addrs[NDIRECT+1];
+  short nlink;        //  从磁盘缓存到内存中的。引用文件的目录项的数量。>0则不是反inode ? 
+  uint size;          //  文件大小吧，感觉应该是指向的datablock的大小之和。
+  uint addrs[NDIRECT+2];    //  最终都指向 block number
 };
 
 // map major device number to device functions.

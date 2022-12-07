@@ -200,6 +200,8 @@ alloc3_desc(int *idx)
   return 0;
 }
 
+// 文件系统通过调用virtio_disk_rw，实现对设备的写操作
+//  ques : 如何确定从disk的哪个位置读？通过buf.dev和buf.block no确定
 void
 virtio_disk_rw(struct buf *b, int write)
 {
