@@ -1,3 +1,4 @@
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -82,6 +83,21 @@ struct trapframe {
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+
+#define NVMA 16
+struct vma
+{
+  int valid;      //  是否有效
+  struct file *f; //  映射的文件
+  uint64 start;   //  user该段映射的起始虚拟地址  根据上一次映射的最低地址和本次的sz来确定。
+  uint64 sz;      //  PGSIZE对齐。[start , end = start + sz - 1]
+  int prot;    //  权限: 对mem的权限。PROT_READ PROT_WRITE
+  int flag;    //  权限: 对file的权限。MAP_PRIVATE MAP_SHARED 是否写回文件。
+                  //  权限：是否和其他process共享。共享什么？内存还是文件、？
+  uint64 offset;  //  映射文件的起始偏移量
+};
+
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -103,4 +119,10 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  
+  //  mmap
+  struct vma vmas[NVMA];       //  regions for mmap
+  //  将proc的trapframe之下的一块内存 作为mmap映射的内存
+  //  在growproc时应当注意判断不要覆盖mmap的内存
+  //  那应当就是判断不要大于mmap映射内存中最低的虚拟地址
 };

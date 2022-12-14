@@ -128,6 +128,9 @@ found:
     return 0;
   }
 
+  // mmap数组清0
+  memset(p->vmas,0,sizeof(p->vmas));
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));

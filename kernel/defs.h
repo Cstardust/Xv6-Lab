@@ -140,6 +140,13 @@ int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
 
+//  sysfile.c
+struct vma;
+int validMmap(uint64 addr,struct vma** vma);
+uint64 getVmaEnd(struct vma *v);
+void uvmlazyMmap(struct vma* va,uint64 pgault_va);
+
+
 // trap.c
 extern uint     ticks;
 void            trapinit(void);

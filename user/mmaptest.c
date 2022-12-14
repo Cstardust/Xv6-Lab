@@ -110,12 +110,24 @@ mmap_test(void)
   // of the file to be mapped. the last argument is the starting
   // offset in the file.
   //
+  //  PROT_READ : the mapped memory is read-only
+  //  MAP_PRIVATE : if the process modifies the mapped memory , the modifications should not be written back to the file nor sharing with other processes mapping the same file
+  printf("=====================\n");
+  
   char *p = mmap(0, PGSIZE*2, PROT_READ, MAP_PRIVATE, fd, 0);
+  
+  printf("=====================\n");
+  
   if (p == MAP_FAILED)
     err("mmap (1)");
   _v1(p);
+  
+  printf("=====================\n");
+
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (1)");
+
+  printf("=====================\n");
 
   printf("test mmap f: OK\n");
     
@@ -141,6 +153,7 @@ mmap_test(void)
   // file opened read-only.
   if ((fd = open(f, O_RDONLY)) == -1)
     err("open");
+
   p = mmap(0, PGSIZE*3, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (p != MAP_FAILED)
     err("mmap call should have failed");

@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "proc.h"
+#include "fcntl.h"
+#include "file.h"
 
 /*
  * the kernel's page table.
@@ -428,4 +433,47 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+
+//  每次处理一页
+void uvmlazyMmap(struct vma* vma,uint64 pgault_va)
+{ 
+  printf("mmap lazy map %p\n",pgault_va);
+
+  //  分配要vma映射到的physical mem
+  uint64 pa = (uint64)kalloc();
+  if(pa == 0){
+    panic("no extra dram");
+  }
+  memset((void*)pa,0,PGSIZE);
+  
+
+  //  从disk读取data到pa
+  begin_op();
+  ilock(vma->f->ip);
+  readi(vma->f->ip,0,pa,vma->offset,PGSIZE);    //  readi会处理PGSIZE超出文件剩余大小
+  iunlock(vma->f->ip);
+  end_op();
+
+  struct proc *p = myproc();
+  //  建立映射 : 一次映射一页。
+    //  计算va
+  uint64 va = PGROUNDDOWN(pgault_va);
+    //  权限
+  int perm = PTE_U;
+  if(vma->flag & PROT_READ)
+    perm |= PTE_R;
+  if(vma->flag & PROT_WRITE)
+    perm |= PTE_W;
+    //  建立映射
+  printf("mmapages start va = %p\n",va);
+  if(mappages(p->pagetable,va,PGSIZE,pa,perm)!=0){
+    //  映射失败 释放pm
+    printf("failed to mappages\n");
+    kfree((void*)pa);
+    p->killed = 1;
+  }
+  printf("mmapages end\n");
 }

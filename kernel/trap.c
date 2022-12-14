@@ -49,8 +49,23 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
+  if(r_scause() == 15 || r_scause() == 13)
+  {
+    uint64 pgault_va = r_stval();
+    struct vma *vma = 0;
+    //  判断是否是被映射的地址范围 若是则获取相应vma
+    if(!validMmap(pgault_va,&vma))   
+    {
+      p->killed = 1;
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    }
+    else
+    {
+      uvmlazyMmap(vma,pgault_va);
+    }
+  }
+  else if(r_scause() == 8){
     // system call
 
     if(p->killed)

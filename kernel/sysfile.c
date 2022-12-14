@@ -15,7 +15,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
-
+#include "memlayout.h"
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -483,4 +483,121 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+
+
+
+// [v->start , v->sz - 1]
+// [v->start , v->sz )
+uint64 getVmaEnd(struct vma *v)
+{
+  return v->start + v->sz;
+}
+
+int validMmap(uint64 addr,struct vma** vma)
+{
+  struct proc *p = myproc();
+  for(int i=0;i<NVMA;++i)
+  {
+    if(p->vmas[i].valid)
+    {
+      uint64 end = getVmaEnd(&(p->vmas[i]));
+      uint64 start = p->vmas[i].start;
+      if(addr >= start && addr < end)
+      {
+        *vma = &(p->vmas[i]);
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+
+
+uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  uint64 sz;
+  int prot;
+  int flag;
+  int fd;
+  uint64 offset;
+
+  if(argaddr(0,&addr) < 0 || argaddr(1,&sz) < 0 || argint(2,&prot) < 0 || argint(3,&flag) < 0 || argint(4,&fd) < 0 || argaddr(5,&offset) < 0)
+  {
+    printf("failed to get the args\n");
+    return -1;
+  }
+
+
+  struct proc *p = myproc();
+
+  //  获取fd的file
+  if(fd < 0 || fd >= NOFILE) panic("sys_mmap");
+  struct file *f = p->ofile[fd];
+
+  //  判定权限是否矛盾
+    //  file不可读 user要求可读
+  if( (!f->readable) && (prot & PROT_READ) ) 
+  {
+    printf("file can not read but you want to read\n");
+    return -1;
+  }
+    //  file不可写 user要求写file
+    //  f->writable : file可写
+    //  PROT_WRITE : user要求写映射内存
+    //  flag : user要求将写的内容落入磁盘
+  if( (!f->writable) && ((prot & PROT_WRITE) && (flag & MAP_SHARED)) )
+  {
+    printf("file can not write but you want to write\n");
+    return -1;
+  }
+
+  //  计算映射大小
+  sz = PGROUNDUP(sz);
+  uint64 mapuplimit = TRAPFRAME;
+  //  顺序寻找可映射的vma槽 并 计算 本次映射的end地址。
+  int idx = 0;
+  for(int i = 0 ; i < NVMA ; ++i)
+  {
+    if(p->vmas[i].valid == 0)
+    {
+      p->vmas[i].valid = 1;
+      idx = i;
+    }
+    //  找到proc中最低的 可以提供给 mmap的 end虚拟地址
+    else if(mapuplimit > p->vmas[i].start)
+    {
+      mapuplimit = p->vmas[i].start;  //  一定是对PGSIZE对齐的。
+    }
+  }
+
+  //  初始化vma
+  p->vmas[idx].f = f;
+  p->vmas[idx].sz = sz;
+  p->vmas[idx].start = PGROUNDDOWN(mapuplimit - sz);  //  start一定是PGSIZE对齐的 sz可能不是
+  p->vmas[idx].prot = prot;
+  p->vmas[idx].flag = flag;
+  p->vmas[idx].offset = offset;  
+  filedup(f);     //  ++ref
+
+  return p->vmas[idx].start;
+}
+
+
+uint64 
+sys_munmap(void)
+{
+  uint64 addr;
+  uint64 sz;
+
+  printf("hasn't finished\n");
+  if(argaddr(0,&addr) < 0 || argaddr(1,&sz) < 0)
+  {
+    return -1;
+  }
+  return -1;
 }
