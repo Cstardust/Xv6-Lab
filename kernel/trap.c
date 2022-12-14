@@ -51,6 +51,7 @@ usertrap(void)
   p->trapframe->epc = r_sepc();
   if(r_scause() == 15 || r_scause() == 13)
   {
+    printf("pagefault %p cause %d\n",r_stval(),r_scause());
     uint64 pgault_va = r_stval();
     struct vma *vma = 0;
     //  判断是否是被映射的地址范围 若是则获取相应vma

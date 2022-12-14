@@ -112,36 +112,40 @@ mmap_test(void)
   //
   //  PROT_READ : the mapped memory is read-only
   //  MAP_PRIVATE : if the process modifies the mapped memory , the modifications should not be written back to the file nor sharing with other processes mapping the same file
-  printf("=====================\n");
   
   char *p = mmap(0, PGSIZE*2, PROT_READ, MAP_PRIVATE, fd, 0);
   
-  printf("=====================\n");
   
   if (p == MAP_FAILED)
     err("mmap (1)");
   _v1(p);
   
-  printf("=====================\n");
 
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (1)");
 
-  printf("=====================\n");
-
   printf("test mmap f: OK\n");
     
   printf("test mmap private\n");
+
   // should be able to map file opened read-only with private writable
   // mapping
   p = mmap(0, PGSIZE*2, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  
+
   if (p == MAP_FAILED)
     err("mmap (2)");
   if (close(fd) == -1)
     err("close");
   _v1(p);
+
+  printf("test1\n");
+  
   for (i = 0; i < PGSIZE*2; i++)
     p[i] = 'Z';
+  
+  printf("test2\n");
+  
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (2)");
 
@@ -271,6 +275,9 @@ fork_test(void)
   
   // mmap the file twice.
   makefile(f);
+
+  printf("test0\n");
+  
   if ((fd = open(f, O_RDONLY)) == -1)
     err("open");
   unlink(f);
@@ -280,6 +287,8 @@ fork_test(void)
   char *p2 = mmap(0, PGSIZE*2, PROT_READ, MAP_SHARED, fd, 0);
   if (p2 == MAP_FAILED)
     err("mmap (5)");
+
+  printf("test1\n");
 
   // read just 2nd page.
   if(*(p1+PGSIZE) != 'A')

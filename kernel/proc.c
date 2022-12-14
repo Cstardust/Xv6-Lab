@@ -303,6 +303,20 @@ fork(void)
 
   pid = np->pid;
 
+
+  for(int i=0;i<NVMA;++i)
+  {
+    //  新进程拷贝父进程的有效vma
+    //  但是只同步父进程vma部分的映射的虚拟地址部分，也即和父进程一样保留了相同的虚拟地址范围用作vma留待映射文件 
+    //  但是新fork出的进程并没有进行真正的映射。还是要等待新fork出的进程自己陷入pagefault后，自己处理建立映射。
+    if(p->vmas[i].valid)
+    {
+      np->vmas[i] = p->vmas[i];     
+      filedup(p->vmas[i].f);
+    }
+  }
+
+
   np->state = RUNNABLE;
 
   release(&np->lock);
@@ -346,6 +360,17 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  //  清空vma，关闭文件
+  for(int i=0;i<NVMA;++i)
+  {
+    if(p->vmas[i].valid)
+    {
+      vmamunmap(&p->vmas[i],p->vmas[i].start,p->vmas[i].sz,p->pagetable);
+      fileclose(p->vmas[i].f);
+    }
+    memset(&p->vmas[i],0,sizeof(p->vmas[i]));
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

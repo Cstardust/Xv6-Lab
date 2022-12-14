@@ -497,13 +497,16 @@ uint64 getVmaEnd(struct vma *v)
 
 int validMmap(uint64 addr,struct vma** vma)
 {
+  // printf("fault addr %p\n",addr);
   struct proc *p = myproc();
   for(int i=0;i<NVMA;++i)
   {
-    if(p->vmas[i].valid)
+    if(p->vmas[i].valid == 1)
     {
       uint64 end = getVmaEnd(&(p->vmas[i]));
       uint64 start = p->vmas[i].start;
+      // printf("start %p end %p sz %p\n",start,end,p->vmas[i].sz);
+
       if(addr >= start && addr < end)
       {
         *vma = &(p->vmas[i]);
@@ -519,6 +522,7 @@ int validMmap(uint64 addr,struct vma** vma)
 uint64
 sys_mmap(void)
 {
+  // printf("=============sys_mmap start===============\n");
   uint64 addr;
   uint64 sz;
   int prot;
@@ -561,16 +565,21 @@ sys_mmap(void)
   uint64 mapuplimit = TRAPFRAME;
   //  顺序寻找可映射的vma槽 并 计算 本次映射的end地址。
   int idx = 0;
+  int found = 0;
   for(int i = 0 ; i < NVMA ; ++i)
   {
-    if(p->vmas[i].valid == 0)
+    // printf("i = %d , ",i);
+    if(p->vmas[i].valid == 0 && !found)
     {
+      // printf("valid\n");
       p->vmas[i].valid = 1;
       idx = i;
+      found = 1;
     }
     //  找到proc中最低的 可以提供给 mmap的 end虚拟地址
-    else if(mapuplimit > p->vmas[i].start)
+    else if(p->vmas[i].valid == 1 && mapuplimit > p->vmas[i].start)
     {
+      // printf("mapuplimit %p , p->vmas[i].start %p\n",mapuplimit,p->vmas[i].start);
       mapuplimit = p->vmas[i].start;  //  一定是对PGSIZE对齐的。
     }
   }
@@ -578,26 +587,98 @@ sys_mmap(void)
   //  初始化vma
   p->vmas[idx].f = f;
   p->vmas[idx].sz = sz;
+  p->vmas[idx].left = sz;
   p->vmas[idx].start = PGROUNDDOWN(mapuplimit - sz);  //  start一定是PGSIZE对齐的 sz可能不是
   p->vmas[idx].prot = prot;
   p->vmas[idx].flag = flag;
   p->vmas[idx].offset = offset;  
   filedup(f);     //  ++ref
 
+  // printf("VMA mapuplimit %p start %p , end %p , sz %p , \n",mapuplimit,p->vmas[idx].start,getVmaEnd(&p->vmas[idx]),p->vmas[idx].sz);
+
+  // printf("=============sys_mmap end===============\n");
+
   return p->vmas[idx].start;
 }
 
-
+// munmap(addr, length) should remove mmap mappings in the indicated address range. 
+// If the process has modified the memory and has it mapped MAP_SHARED, the modifications should first be written to the file. 
+// An munmap call might cover only a portion of an mmap-ed region,
+// but you can assume that it will either unmap at the start, 
+// or at the end, 
+// or the whole region 
+// (but not punch a hole in the middle of a region).
 uint64 
 sys_munmap(void)
 {
+  // printf("=============sys_munmap start===============\n");
+
   uint64 addr;
   uint64 sz;
-
-  printf("hasn't finished\n");
+  //  取参数
   if(argaddr(0,&addr) < 0 || argaddr(1,&sz) < 0)
   {
+    printf("failed to get arg\n");
     return -1;
   }
-  return -1;
+  // printf("user input addr %p sz %p\n",addr,sz);
+
+  struct vma *vma;
+  //  检验地址合法性
+  // you can assume that it will either unmap at the start, or at the end, or the whole region (but not punch a hole in the middle of a region).
+  if(!validMmap(addr,&vma))
+  {
+    printf("unmmapped region\n");
+    return -1;
+  }
+  if(addr < vma->start || addr > getVmaEnd(vma))
+  {
+    printf("beyond region\n");
+    return -1;
+  }
+    //  not to dig a hole
+  if(addr > vma->start && addr + sz < getVmaEnd(vma))
+  {
+    printf("forbiddened to dig a hole ?\n");
+    return -1;
+  }
+
+  //  烦人的计算要munmap的范围
+  //////////////////////////////////////////////////////////////
+
+  //  只有munmap至少有一端在vma->start或者vma->end时 才是合法munmap的
+    //  合法的释放范围只有这三种
+      //  声明 vma->end = getEndVma(vma);
+      //  [vma->start , x)   (x <= vma->end)  x不必和PGSIZE对齐
+      //  [x , vma->end)     (x >= vma->start)      x不必和PGSIZE对齐
+      //  [vma->start , vma->end)             whole
+  uint64 start = PGROUNDDOWN(addr);   //  起始地址向下对齐
+
+  if(start + sz >= getVmaEnd(vma) || start > vma->start)
+  {
+    sz = getVmaEnd(vma) - start;
+  }
+
+  // printf("I will really munmap from addr %p sz %p region end is %p\n",start,sz,getVmaEnd(vma));
+
+  //////////////////////////////////////////////////////////////
+
+  struct proc *p = myproc();
+  pagetable_t pgtb = p->pagetable;
+  //  真正的核心实现逻辑在这个函数里
+  vmamunmap(vma,start,sz,pgtb);
+
+  vma->left -= sz;
+
+  //  如果全部释放，那么
+  if(vma->left == 0)
+  {
+    // printf("release a vma\n");
+    vma->valid = 0;
+    vma->left = 0;
+    fileclose(vma->f);
+  }
+
+  // printf("=============sys_munmap end===============\n");
+  return 0;
 }

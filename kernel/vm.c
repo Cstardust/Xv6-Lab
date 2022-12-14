@@ -188,6 +188,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   }
 }
 
+
+
 // create an empty user page table.
 // returns 0 if out of memory.
 pagetable_t
@@ -440,7 +442,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 //  每次处理一页
 void uvmlazyMmap(struct vma* vma,uint64 pgault_va)
 { 
-  printf("mmap lazy map %p\n",pgault_va);
+  // printf("==============mmap lazy map start %p==========\n",pgault_va);
 
   //  分配要vma映射到的physical mem
   uint64 pa = (uint64)kalloc();
@@ -450,30 +452,92 @@ void uvmlazyMmap(struct vma* vma,uint64 pgault_va)
   memset((void*)pa,0,PGSIZE);
   
 
+  //  计算va
+  uint64 va = PGROUNDDOWN(pgault_va);
+
   //  从disk读取data到pa
   begin_op();
   ilock(vma->f->ip);
-  readi(vma->f->ip,0,pa,vma->offset,PGSIZE);    //  readi会处理PGSIZE超出文件剩余大小
+    //  va - vma->start  --- 应当从file的第几个bytes开始读
+    //  物理上的file应当从第几个bytes开始读 其 "第几个bytes" 是和 virtual address同步的。
+    //  所以应当是 offset + va - vma->start
+    //  如果不这样的话会读取file内容错误
+  readi(vma->f->ip,0,pa,vma->offset + (va - vma->start),PGSIZE);    //  readi会处理PGSIZE超出文件剩余大小
   iunlock(vma->f->ip);
   end_op();
 
   struct proc *p = myproc();
   //  建立映射 : 一次映射一页。
-    //  计算va
-  uint64 va = PGROUNDDOWN(pgault_va);
     //  权限
   int perm = PTE_U;
-  if(vma->flag & PROT_READ)
+
+  if(vma->prot & PROT_READ)
+  {
     perm |= PTE_R;
-  if(vma->flag & PROT_WRITE)
+  }
+  if(vma->prot & PROT_WRITE)
+  {
     perm |= PTE_W;
+  }
     //  建立映射
-  printf("mmapages start va = %p\n",va);
+  // printf("mmapages start va = %p\n",va);
   if(mappages(p->pagetable,va,PGSIZE,pa,perm)!=0){
     //  映射失败 释放pm
     printf("failed to mappages\n");
     kfree((void*)pa);
     p->killed = 1;
   }
-  printf("mmapages end\n");
+
+  // printf("==============mmap lazy map end %p==========\n",pgault_va);
+}
+
+//  munmap的核心逻辑
+//  1. 解除vma管理的 从 [start,start+sz) 到 pa的映射
+  //  清空pte : *pte = 0
+  //  释放mem : kfree(pa)
+//  2. 并在需要时将physical mem中的内容写入disk
+  //  writei
+void vmamunmap(struct vma* vma , uint64 start , uint64 sz , pagetable_t pagetable)
+{
+  pte_t *pte;
+
+  for(uint64 a = start ; a < start + sz; a +=PGSIZE)
+  {
+    if((pte = walk(pagetable,a,0)) == 0)
+      continue;
+    if((*pte & PTE_V) == 0)               //  由此处，可知，对同一范围重复vmamunmap也不会出错。
+      continue;
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("uvmunmap: not a leaf");
+    //  如果userva真的建立了到pa的映射
+    if(*pte & PTE_V)
+    {
+      uint64 pa = PTE2PA(*pte);
+      //  如果map_shared 且 确实写过 则 写入disk file
+      if((*pte & PTE_D) && (vma->flag & MAP_SHARED))
+      {
+        begin_op();
+        ilock(vma->f->ip);
+        uint64 dest_file_byte = vma->offset+(a-vma->start);   //  要写入的file的起始bytes
+        uint64 bytes_to_write = start + sz - a;               //  总共还有多少bytes要写
+        if(bytes_to_write >= PGSIZE)
+        {
+          // writei(vma->f->ip,1,a,dest_file_byte,PGSIZE);  使用user_va
+          writei(vma->f->ip,0,pa,dest_file_byte,PGSIZE);    //  使用pa
+        }
+        else      //  如果不足1PGSIZEs
+        {
+          // writei(vma->f->ip,1,a,dest_file_byte,bytes_to_write);  使用user_va
+          writei(vma->f->ip,0,pa,dest_file_byte,bytes_to_write);  //  使用pa
+        }
+        iunlock(vma->f->ip);
+        end_op();
+      }
+      // printf("release user addr %p 's pte\n",a);
+      //  清空PTE
+      *pte = 0;     
+      //  释放mem
+      kfree((void*)pa);
+    }
+  }
 }
