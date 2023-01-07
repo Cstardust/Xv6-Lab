@@ -92,9 +92,8 @@ struct vma
   uint64 start;   //  user该段映射的起始虚拟地址  根据上一次映射的最低地址和本次的sz来确定。
   uint64 sz;      //  PGSIZE对齐。[start , end = start + sz - 1]
   uint64 left;    //  vma中剩余的还没被释放的bytes数量
-  int prot;    //  权限: 对mem的权限。PROT_READ PROT_WRITE
-  int flag;    //  权限: 对file的权限。MAP_PRIVATE MAP_SHARED 是否写回文件。
-                  //  权限：是否和其他process共享。共享什么？内存还是文件、？
+  int prot;       //  权限: 对mem的权限。PROT_READ PROT_WRITE
+  int flag;       //  权限: 对file的权限。MAP_PRIVATE MAP_SHARED 是否写回文件。
   uint64 offset;  //  映射文件的起始偏移量
 
 };
