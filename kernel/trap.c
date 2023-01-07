@@ -72,7 +72,6 @@ usertrap(void)
     // printf("pgfault %p\n",va);
     //  分配新physical mem，建立新映射，不再和parent 映射在同一physical mem
     int ret = walkaddrforwrite(p->pagetable,va);
-    //  待做：这个porcess好了，可是另一个process呢？如何使其变为可写？当那个process想写的时候,判断了引用计数为1,则直接就可以写了.
     //  没有内存了. 杀掉process.不杀掉的话会陷入死循环. 回到user,发现还是不可写.然后硬件触发.然后继续到这里.还是没内存.循环往复.
     if(ret == 0)
       p->killed = 1;

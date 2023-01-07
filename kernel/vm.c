@@ -154,11 +154,6 @@ uint64 walkaddrforwrite(pagetable_t pgtbl,uint64 va)
     }
     else
     {
-      //  child 写 那么 去找parent，去改变parent的pte 标记为可写。
-      //  那么如果parent写呢？如何改变child？
-      //  get the parent pgtbl
-      // struct proc* parent = myproc()->parent;
-      // pagetable_t parent_pgtbl = parent->pagetable;
       if(getref(PTE2PA(*pte))<=1)
       {
         *pte |= PTE_W;

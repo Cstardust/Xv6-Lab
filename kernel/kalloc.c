@@ -133,8 +133,6 @@ kfree(void *pa)
 
   acquire(&kmem.lock);
 
-  // if(refs[idx].ref_cnt < 1) panic("ref_cnt is expected to be > 0");
-  // if((refs[idx].ref_cnt) == 1)  // kpgtbl一开始会有个引用计数1
 
   int idx = ((uint64)pa - KERNBASE) / PGSIZE;
   if(idx <= 0 ) panic("idx is expected to be > 0 ");
