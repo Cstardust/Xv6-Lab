@@ -74,7 +74,7 @@ thread_schedule(void)
     }
     t = t + 1;
   }
-  //  整个process 最后会从这里退出吧。。main thread是running。thread123是free
+  //  整个process 最后会从这里退出。main thread是running。thread123是free
   if (next_thread == 0) {
     printf("thread_schedule: no runnable threads\n");
     exit(-1);
@@ -94,7 +94,9 @@ thread_schedule(void)
     next_thread = 0;
 }
 
-//   找到free的thread，为其分配task:func ，并设置好上下文，使其变成runnable。
+//   1. 找到free的thread
+//   2. 使其变成runnable
+//   3. 为其分配task:func ，并设置好上下文。
 void 
 thread_create(void (*func)())
 {
@@ -115,7 +117,7 @@ thread_create(void (*func)())
 void 
 thread_yield(void)
 {
-  //  不必上锁。因为一个进程同一时刻只会被一个cpu核看到。故这里的这些uthread只会在同一个cpu核上。？
+  //  不必上锁。因为一个进程同一时刻只会被一个cpu核看到。故这里的这些uthread只会在同一个cpu核上。
   current_thread->state = RUNNABLE;
   thread_schedule();
 }
