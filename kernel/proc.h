@@ -105,10 +105,10 @@ struct proc {
   char name[16];               // Process name (debugging)
 
 
-  int ticks_interval;           //  sigalarm 设置ticks间隔
-  void (*alarm_handler) (void); //  callback
-  int ticks_passed;             //  已经过去的ticks
-  struct trapframe *back_trapframe; //  对进入alarm handler之前的上下文进行一个备份  
+  int ticks_interval;               //  sigalarm 设置ticks间隔
+  void (*alarm_handler) (void);     //  callback
+  int ticks_passed;                 //  已经过去的ticks
+  struct trapframe *back_trapframe; //  对进入alarm handler之前的原先的指令流的上下文进行一个备份  
   int is_in_cb;
 
 };

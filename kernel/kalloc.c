@@ -30,6 +30,7 @@ kinit()
   freerange(end, (void*)PHYSTOP);
 }
 
+//  将physical mem划分为一个个page，用freelist维护起来。
 void
 freerange(void *pa_start, void *pa_end)
 {
