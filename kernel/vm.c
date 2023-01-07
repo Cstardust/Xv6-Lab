@@ -243,6 +243,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+    //   防止释放合法但还没分配物理内存建立映射的va
     if((pte = walk(pagetable, a, 0)) == 0)
       continue;
       // panic("uvmunmap: walk ");
