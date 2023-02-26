@@ -154,13 +154,14 @@ uint64 walkaddrforwrite(pagetable_t pgtbl,uint64 va)
     }
     else
     {
+      //  只有本process引用该physical page. 那么不必cow. 直接return即可
       if(getref(PTE2PA(*pte))<=1)
       {
         *pte |= PTE_W;
         *pte &= ~PTE_RSW_1; 
         return PTE2PA(*pte);
       }
-
+      //  copy on write
       uint64 old_pa = PTE2PA(*pte);
       uint64 mem = (uint64) kalloc();
       if(mem == 0)  return 0;         //  没有空余内存了
