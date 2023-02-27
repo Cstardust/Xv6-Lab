@@ -31,7 +31,7 @@ struct u_context{
 };
 
 
-//  这些thread结构体存在哪里 data吧..
+//  这些thread结构体存在data段
 struct thread {
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
@@ -63,8 +63,6 @@ thread_schedule(void)
   /* Find another runnable thread. */
   next_thread = 0;
   t = current_thread + 1;
-  //  这个thread难道不应该是个死循环吗。。
-  //  当然不应该。这可不是scheduler thread。只是一个单纯的scheduler func。
   for(int i = 0; i < MAX_THREAD; i++){
     if(t >= all_thread + MAX_THREAD)
       t = all_thread;
@@ -74,7 +72,7 @@ thread_schedule(void)
     }
     t = t + 1;
   }
-  //  整个process 最后会从这里退出。main thread是running。thread123是free
+  //  没有runnable proc , 整个process最后会从这里退出。
   if (next_thread == 0) {
     printf("thread_schedule: no runnable threads\n");
     exit(-1);

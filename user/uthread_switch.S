@@ -2,9 +2,9 @@
 	#   void swtch(struct context *old, struct context *new);
 	#  将当前cpu上的reg保存在old 上，并将new 加载到cpu的reg上
 	/*
-         * save the old thread's registers,
-         * restore the new thread's registers.
-         */
+	* save the old thread's registers,
+	* restore the new thread's registers.
+	*/
 
 	.globl thread_switch
 thread_switch:
