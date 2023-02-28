@@ -324,6 +324,12 @@ sfence_vma()
 #define PGSHIFT 12  // bits of offset within a page
 
 #define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
+//  对4096 向下取整 (将a低3位变0)
+  //  0x1fff -> 0x1000
+  //  0x1001 -> 0x1000
+  //  0x1000 -> 0x1000
+  //  0x0fff -> 0x0000
+  //  0x0000 -> 0x0000
 #define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
 
 #define PTE_V (1L << 0) // valid

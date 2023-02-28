@@ -23,6 +23,7 @@ trapinit(void)
 }
 
 // set up to take exceptions and traps while in the kernel.
+//  当发生异常时会跳转到$stvec指向的代码处进行处理
 void
 trapinithart(void)
 {

@@ -37,11 +37,14 @@ procinit(void)
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
+      //  计算prcoess的kernel stack 应当处于kernel pgtbl维护的 virtual address
       uint64 va = KSTACK((int) (p - proc));
+      //  将kernel stack的va和pa之间的映射记录在全局的kernel_pagetable中
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      p->kstack = va;   //  记录kernel stack的kernel virtual address
+      p->kstack_pa = (uint64)pa;  //  记录kernel stack的physical address。之后在allocproc时 在proc的kpagetable中建立kernelstack va到pa的映射
   }
-  kvminithart();
+  kvminithart();        //  更新pgtbl
 }
 
 // Must be called with interrupts disabled,
@@ -127,8 +130,17 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  //  在proc的kernel pagetable 建立kernel stack从va到pa的映射。之前不建立映射是因为当时还没有user kernel pgtbl
+    //  只是把全局的kernel pgtbl的映射又在proc的kernel pgtbl上又做了一次。
+  //  An empty kernel pgtbl
+  p->kpagetable = kvminitproc();
+  kvmmapproc(p->kpagetable,p->kstack,p->kstack_pa,PGSIZE,PTE_R | PTE_W);
+  //  此时除了trapframe和trampoline之外还没有section 无需同步 user kernel pgtbl
+  //  也即0xC000000之下 user pgtbl没有建立va-pa
+  //  也即此时的user pgtbl 只记录了 trampoline和trapframe的地址映射
   return p;
 }
+
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -139,9 +151,17 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+
+  if(p->kpagetable)
+    freepgtblonly(p->kpagetable);
+  p->kpagetable = 0;
+
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -154,6 +174,7 @@ freeproc(struct proc *p)
 
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
+//  创建 user pagetable ，并建立好trapoline和trapframe的映射。其余虚拟内存地址都没有(也即0x0C000000以下的都没有)
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -168,12 +189,14 @@ proc_pagetable(struct proc *p)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
+  //  将dram中的trampoline.S 映射到 user pagetable的0x3ffffff000处(TRAMPOLINE)
+  //  且这段内存只有supervisor可以使用，用户不能使用
   if(mappages(pagetable, TRAMPOLINE, PGSIZE,
               (uint64)trampoline, PTE_R | PTE_X) < 0){
     uvmfree(pagetable, 0);
     return 0;
   }
-
+  //  将dram中的p->trapframe(既是kernel_pagetable vritual addr又是physical addr)映射到user pagetable的TRAPFRAME处。
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
@@ -185,7 +208,7 @@ proc_pagetable(struct proc *p)
   return pagetable;
 }
 
-// Free a process's page table, and free the
+// Free a process's user page table, and free the
 // physical memory it refers to.
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
@@ -194,6 +217,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
 }
+
 
 // a user program that calls exec("/init")
 // od -t xC initcode
@@ -218,10 +242,15 @@ userinit(void)
   
   // allocate one user page and copy init's instructions
   // and data into it.
+  //  这里面更新了user pgtbl的pte。更新的虚拟地址范围为[0, PGSIZE-1]
   uvminit(p->pagetable, initcode, sizeof(initcode));
+  //  同步 user kernel pgtbl
+  u2kvmcopymappingonly(p->kpagetable,p->pagetable,0,PGSIZE);
+
   p->sz = PGSIZE;
 
   // prepare for the very first "return" from kernel to user.
+  //  从kernel到user会首先指向user的0地址，即initcode的代码处。
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
@@ -246,8 +275,17 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+      // printf("sz = %d , sz + n = %d\n",sz,sz+n);
+      //  同步proc kernel pgtbl
+      if(u2kvmcopymappingonly(p->kpagetable,p->pagetable, p->sz ,p->sz + n) < 0)
+      {
+        uvmdealloc(p->pagetable,sz,p->sz);
+        return -1;
+      }
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    uvmdealloc(p->pagetable, sz, sz + n);
+    // 同步proc kernel pgtbl
+    sz = kvmdeallocpgtblonly(p->kpagetable,sz,sz + n);
   }
   p->sz = sz;
   return 0;
@@ -268,11 +306,17 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  //  ques 我这里就不能理解，这user使用的虚拟地址就一定是连续的吗？怎么就这么自信？：看来xv6里确实是连续的。
+  //  child process 拷贝 parent的 user pgtbl 维护的虚拟进程地址
+    //  同步
+    //  child process 的user pgtbl 发生改变 同步到pgtbl上
+    //  将child process的user pgtbl 的新建立的虚拟地址范围以及映射(新建立的pte) 拷贝给kernel pgtbl 从[0,np->sz)
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || u2kvmcopymappingonly(np->kpagetable,np->pagetable,0,p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+
   np->sz = p->sz;
 
   np->parent = p;
@@ -473,17 +517,27 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // printf("tag proc.c 516\n");
+        //  切换进程之前 切换成proc的kernel pgtbl
+        kvminithartproc(p->kpagetable);
+
+        //  切换到目标内核进程
         swtch(&c->context, &p->context);
+
+        //  没有user进程运行时 即 运行scheduler时 换回全局kernel pgtbl
+        kvminithart();
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        c->proc = 0;
+        c->proc = 0; // cpu dosen't run any process now
 
+        // printf("tag proc.c 530\n");
         found = 1;
       }
       release(&p->lock);
     }
 #if !defined (LAB_FS)
+//  found = 0 没有找到任何一个runnable的进程
     if(found == 0) {
       intr_on();
       asm volatile("wfi");
